@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use crate::token::PyToken;
 use crate::trainers::PyTrainer;
@@ -24,11 +24,11 @@ use super::error::{deprecation_warning, ToPyResult};
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PyModel {
     #[serde(flatten)]
-    pub model: Arc<ModelWrapper>,
+    pub model: Arc<RwLock<ModelWrapper>>,
 }
 
 impl PyModel {
-    pub(crate) fn new(model: Arc<ModelWrapper>) -> Self {
+    pub(crate) fn new(model: Arc<RwLock<ModelWrapper>>) -> Self {
         PyModel { model }
     }
 
@@ -36,7 +36,7 @@ impl PyModel {
         let base = self.clone();
         let gil = Python::acquire_gil();
         let py = gil.python();
-        Ok(match self.model.as_ref() {
+        Ok(match *self.model.as_ref().read().unwrap() {
             ModelWrapper::BPE(_) => Py::new(py, (PyBPE {}, base))?.into_py(py),
             ModelWrapper::WordPiece(_) => Py::new(py, (PyWordPiece {}, base))?.into_py(py),
             ModelWrapper::WordLevel(_) => Py::new(py, (PyWordLevel {}, base))?.into_py(py),
@@ -49,31 +49,31 @@ impl Model for PyModel {
     type Trainer = PyTrainer;
 
     fn tokenize(&self, tokens: &str) -> tk::Result<Vec<Token>> {
-        self.model.tokenize(tokens)
+        self.model.read().unwrap().tokenize(tokens)
     }
 
     fn token_to_id(&self, token: &str) -> Option<u32> {
-        self.model.token_to_id(token)
+        self.model.read().unwrap().token_to_id(token)
     }
 
-    fn id_to_token(&self, id: u32) -> Option<&str> {
-        self.model.id_to_token(id)
+    fn id_to_token(&self, id: u32) -> Option<String> {
+        self.model.read().unwrap().id_to_token(id)
     }
 
-    fn get_vocab(&self) -> &HashMap<String, u32> {
-        self.model.get_vocab()
+    fn get_vocab(&self) -> HashMap<String, u32> {
+        self.model.read().unwrap().get_vocab()
     }
 
     fn get_vocab_size(&self) -> usize {
-        self.model.get_vocab_size()
+        self.model.read().unwrap().get_vocab_size()
     }
 
     fn save(&self, folder: &Path, name: Option<&str>) -> tk::Result<Vec<PathBuf>> {
-        self.model.save(folder, name)
+        self.model.read().unwrap().save(folder, name)
     }
 
     fn get_trainer(&self) -> Self::Trainer {
-        self.model.get_trainer().into()
+        self.model.read().unwrap().get_trainer().into()
     }
 }
 
@@ -84,7 +84,7 @@ impl PyModel {
         // Instantiate a default empty model. This doesn't really make sense, but we need
         // to be able to instantiate an empty model for pickle capabilities.
         Ok(PyModel {
-            model: Arc::new(BPE::default().into()),
+            model: Arc::new(RwLock::new(BPE::default().into())),
         })
     }
 
@@ -114,7 +114,7 @@ impl PyModel {
     }
 
     fn tokenize(&self, tokens: &str) -> PyResult<Vec<PyToken>> {
-        Ok(ToPyResult(self.model.tokenize(tokens))
+        Ok(ToPyResult(self.model.read().unwrap().tokenize(tokens))
             .into_py()?
             .into_iter()
             .map(|t| t.into())
@@ -122,15 +122,16 @@ impl PyModel {
     }
 
     fn token_to_id(&self, token: &str) -> Option<u32> {
-        self.model.token_to_id(token)
+        self.model.read().unwrap().token_to_id(token)
     }
 
-    fn id_to_token(&self, id: u32) -> Option<&str> {
-        self.model.id_to_token(id)
+    fn id_to_token(&self, id: u32) -> Option<String> {
+        self.model.read().unwrap().id_to_token(id)
     }
 
     fn save(&self, folder: &str, name: Option<&str>) -> PyResult<Vec<String>> {
-        let saved: PyResult<Vec<_>> = ToPyResult(self.model.save(Path::new(folder), name)).into();
+        let saved: PyResult<Vec<_>> =
+            ToPyResult(self.model.read().unwrap().save(Path::new(folder), name)).into();
 
         Ok(saved?
             .into_iter()
@@ -139,7 +140,7 @@ impl PyModel {
     }
 
     fn get_trainer(&self) -> PyResult<PyObject> {
-        PyTrainer::from(self.model.get_trainer()).get_as_subtype()
+        PyTrainer::from(self.model.read().unwrap().get_trainer()).get_as_subtype()
     }
 }
 
@@ -180,7 +181,7 @@ impl PyBPE {
                 "Error while initializing BPE: {}",
                 e
             ))),
-            Ok(bpe) => Ok((PyBPE {}, PyModel::new(Arc::new(bpe.into())))),
+            Ok(bpe) => Ok((PyBPE {}, PyModel::new(Arc::new(RwLock::new(bpe.into()))))),
         }
     }
 }
@@ -300,7 +301,10 @@ impl PyWordPiece {
                 "Error while initializing WordPiece: {}",
                 e
             ))),
-            Ok(wordpiece) => Ok((PyWordPiece {}, PyModel::new(Arc::new(wordpiece.into())))),
+            Ok(wordpiece) => Ok((
+                PyWordPiece {},
+                PyModel::new(Arc::new(RwLock::new(wordpiece.into()))),
+            )),
         }
     }
 }
@@ -396,11 +400,14 @@ impl PyWordLevel {
                 }
             };
 
-            Ok((PyWordLevel {}, PyModel::new(Arc::new(model.into()))))
+            Ok((
+                PyWordLevel {},
+                PyModel::new(Arc::new(RwLock::new(model.into()))),
+            ))
         } else {
             Ok((
                 PyWordLevel {},
-                PyModel::new(Arc::new(WordLevel::default().into())),
+                PyModel::new(Arc::new(RwLock::new(WordLevel::default().into()))),
             ))
         }
     }
@@ -434,11 +441,14 @@ impl PyUnigram {
                 let model = Unigram::from(vocab, unk_id).map_err(|e| {
                     exceptions::PyException::new_err(format!("Error while loading Unigram: {}", e))
                 })?;
-                Ok((PyUnigram {}, PyModel::new(Arc::new(model.into()))))
+                Ok((
+                    PyUnigram {},
+                    PyModel::new(Arc::new(RwLock::new(model.into()))),
+                ))
             }
             (None, None) => Ok((
                 PyUnigram {},
-                PyModel::new(Arc::new(Unigram::default().into())),
+                PyModel::new(Arc::new(RwLock::new(Unigram::default().into()))),
             )),
             _ => Err(exceptions::PyValueError::new_err(
                 "`vocab` and `unk_id` must be both specified",
@@ -451,13 +461,13 @@ impl PyUnigram {
 mod test {
     use crate::models::PyModel;
     use pyo3::prelude::*;
-    use std::sync::Arc;
+    use std::sync::{Arc, RwLock};
     use tk::models::bpe::BPE;
     use tk::models::ModelWrapper;
 
     #[test]
     fn get_subtype() {
-        let py_model = PyModel::new(Arc::new(BPE::default().into()));
+        let py_model = PyModel::new(Arc::new(RwLock::new(BPE::default().into())));
         let py_bpe = py_model.get_as_subtype().unwrap();
         let gil = Python::acquire_gil();
         assert_eq!(
@@ -473,19 +483,19 @@ mod test {
         let rs_wrapper: ModelWrapper = rs_bpe.into();
         let rs_wrapper_ser = serde_json::to_string(&rs_wrapper).unwrap();
 
-        let py_model = PyModel::new(Arc::new(rs_wrapper));
+        let py_model = PyModel::new(Arc::new(RwLock::new(rs_wrapper)));
         let py_ser = serde_json::to_string(&py_model).unwrap();
         assert_eq!(py_ser, rs_bpe_ser);
         assert_eq!(py_ser, rs_wrapper_ser);
 
         let py_model: PyModel = serde_json::from_str(&rs_bpe_ser).unwrap();
-        match py_model.model.as_ref() {
+        match *py_model.model.as_ref().read().unwrap() {
             ModelWrapper::BPE(_) => (),
             _ => panic!("Expected Bert postprocessor."),
         }
 
         let py_model: PyModel = serde_json::from_str(&rs_wrapper_ser).unwrap();
-        match py_model.model.as_ref() {
+        match *py_model.model.as_ref().read().unwrap() {
             ModelWrapper::BPE(_) => (),
             _ => panic!("Expected Bert postprocessor."),
         }
