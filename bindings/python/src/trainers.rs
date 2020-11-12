@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use pyo3::exceptions;
 use pyo3::prelude::*;
@@ -14,11 +13,11 @@ use crate::tokenizer::PyAddedToken;
 #[pyclass(name=Trainer)]
 #[derive(Clone)]
 pub struct PyTrainer {
-    pub trainer: Arc<TrainerWrapper>,
+    pub trainer: Arc<RwLock<TrainerWrapper>>,
 }
 
 impl PyTrainer {
-    pub(crate) fn new(trainer: Arc<TrainerWrapper>) -> Self {
+    pub(crate) fn new(trainer: Arc<RwLock<TrainerWrapper>>) -> Self {
         PyTrainer { trainer }
     }
 
@@ -26,7 +25,7 @@ impl PyTrainer {
         let base = self.clone();
         let gil = Python::acquire_gil();
         let py = gil.python();
-        Ok(match self.trainer.as_ref() {
+        Ok(match *self.trainer.as_ref().read().unwrap() {
             TrainerWrapper::BpeTrainer(_) => Py::new(py, (PyBpeTrainer {}, base))?.into_py(py),
             TrainerWrapper::WordPieceTrainer(_) => {
                 Py::new(py, (PyWordPieceTrainer {}, base))?.into_py(py)
@@ -45,19 +44,33 @@ impl Trainer for PyTrainer {
     type Model = PyModel;
 
     fn should_show_progress(&self) -> bool {
-        self.trainer.should_show_progress()
+        println!("Should show progress");
+        let res = self.trainer.read().unwrap().should_show_progress();
+        println!("End should show progress");
+        res
     }
 
-    fn train(
-        &self,
-        words: HashMap<String, u32>,
-        model: &mut PyModel,
-    ) -> tk::Result<Vec<tk::AddedToken>> {
-        self.trainer.train(words, &mut model.model.write().unwrap())
+    fn train(&self, model: &mut PyModel) -> tk::Result<Vec<tk::AddedToken>> {
+        println!("Train");
+        let res = self
+            .trainer
+            .read()
+            .unwrap()
+            .train(&mut model.model.write().unwrap());
+        println!("End train");
+        res
     }
 
-    fn process_tokens(&self, words: &mut HashMap<String, u32>, tokens: Vec<String>) {
-        self.trainer.process_tokens(words, tokens)
+    fn feed<I, S, F>(&mut self, iterator: I, process: F) -> tk::Result<()>
+    where
+        I: Iterator<Item = S> + Send,
+        S: AsRef<str> + Send,
+        F: Fn(&str) -> tk::Result<Vec<String>> + Sync,
+    {
+        println!("Feed");
+        let res = self.trainer.write().unwrap().feed(iterator, process);
+        println!("End feed");
+        res
     }
 }
 
@@ -67,7 +80,7 @@ where
 {
     fn from(trainer: I) -> Self {
         PyTrainer {
-            trainer: trainer.into().into(),
+            trainer: Arc::new(RwLock::new(trainer.into())),
         }
     }
 }
@@ -132,10 +145,7 @@ impl PyBpeTrainer {
                 };
             }
         }
-        Ok((
-            PyBpeTrainer {},
-            PyTrainer::new(Arc::new(builder.build().into())),
-        ))
+        Ok((PyBpeTrainer {}, builder.build().into()))
     }
 }
 
@@ -200,10 +210,7 @@ impl PyWordPieceTrainer {
             }
         }
 
-        Ok((
-            PyWordPieceTrainer {},
-            PyTrainer::new(Arc::new(builder.build().into())),
-        ))
+        Ok((PyWordPieceTrainer {}, builder.build().into()))
     }
 }
 
@@ -249,10 +256,7 @@ impl PyWordLevelTrainer {
             }
         }
 
-        Ok((
-            PyWordLevelTrainer {},
-            PyTrainer::new(Arc::new(trainer.into())),
-        ))
+        Ok((PyWordLevelTrainer {}, trainer.into()))
     }
 }
 
@@ -318,9 +322,6 @@ impl PyUnigramTrainer {
             builder.build().map_err(|e| {
                 exceptions::PyException::new_err(format!("Cannot build UnigramTrainer: {}", e))
             })?;
-        Ok((
-            PyUnigramTrainer {},
-            PyTrainer::new(Arc::new(trainer.into())),
-        ))
+        Ok((PyUnigramTrainer {}, trainer.into()))
     }
 }

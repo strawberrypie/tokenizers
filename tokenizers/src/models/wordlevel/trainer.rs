@@ -1,4 +1,5 @@
 use super::WordLevel;
+use crate::utils::parallelism::*;
 use crate::{AddedToken, Result, Trainer};
 use std::collections::HashMap;
 
@@ -11,6 +12,8 @@ pub struct WordLevelTrainer {
     pub show_progress: bool,
     /// A list of special tokens that the model should know of
     pub special_tokens: Vec<AddedToken>,
+
+    words: HashMap<String, u32>,
 }
 
 impl Default for WordLevelTrainer {
@@ -20,6 +23,7 @@ impl Default for WordLevelTrainer {
             vocab_size: 30_000,
             show_progress: true,
             special_tokens: vec![],
+            words: HashMap::new(),
         }
     }
 }
@@ -62,17 +66,44 @@ impl Trainer for WordLevelTrainer {
     type Model = WordLevel;
 
     /// Train a WordLevel model
-    fn train(
-        &self,
-        word_counts: HashMap<String, u32>,
-        model: &mut WordLevel,
-    ) -> Result<Vec<AddedToken>> {
-        self.train(word_counts, model)
+    fn train(&self, model: &mut WordLevel) -> Result<Vec<AddedToken>> {
+        self.train(self.words.clone(), model)
     }
 
     /// Whether we should show progress
     fn should_show_progress(&self) -> bool {
         self.show_progress
+    }
+
+    fn feed<I, S, F>(&mut self, iterator: I, process: F) -> Result<()>
+    where
+        I: Iterator<Item = S> + Send,
+        S: AsRef<str> + Send,
+        F: Fn(&str) -> Result<Vec<String>> + Sync,
+    {
+        let words: Result<HashMap<String, u32>> = iterator
+            .maybe_par_bridge()
+            .map(|sequence| {
+                let words = process(sequence.as_ref())?;
+                let mut map = HashMap::new();
+                for word in words {
+                    map.entry(word).and_modify(|c| *c += 1).or_insert(1);
+                }
+                Ok(map)
+            })
+            .reduce(
+                || Ok(HashMap::new()),
+                |acc, ws| {
+                    let mut acc = acc?;
+                    for (k, v) in ws? {
+                        acc.entry(k).and_modify(|c| *c += v).or_insert(v);
+                    }
+                    Ok(acc)
+                },
+            );
+
+        self.words = words?;
+        Ok(())
     }
 }
 

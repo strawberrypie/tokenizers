@@ -145,39 +145,49 @@ impl Trainer for TrainerWrapper {
         }
     }
 
-    fn train(
-        &self,
-        words: HashMap<String, u32>,
-        model: &mut ModelWrapper,
-    ) -> Result<Vec<AddedToken>> {
+    fn train(&self, model: &mut ModelWrapper) -> Result<Vec<AddedToken>> {
         match self {
             TrainerWrapper::BpeTrainer(t) => match model {
-                ModelWrapper::BPE(bpe) => t.train(words, bpe),
+                ModelWrapper::BPE(bpe) => t.train(bpe),
                 _ => unreachable!(),
             },
             TrainerWrapper::WordPieceTrainer(t) => match model {
-                ModelWrapper::WordPiece(wp) => t.train(words, wp),
+                ModelWrapper::WordPiece(wp) => t.train(wp),
                 _ => unreachable!(),
             },
             TrainerWrapper::WordLevelTrainer(t) => match model {
-                ModelWrapper::WordLevel(wl) => t.train(words, wl),
+                ModelWrapper::WordLevel(wl) => t.train(wl),
                 _ => unreachable!(),
             },
             TrainerWrapper::UnigramTrainer(t) => match model {
-                ModelWrapper::Unigram(u) => t.train(words, u),
+                ModelWrapper::Unigram(u) => t.train(u),
                 _ => unreachable!(),
             },
         }
     }
 
-    fn process_tokens(&self, words: &mut HashMap<String, u32>, tokens: Vec<String>) {
+    fn feed<I, S, F>(&mut self, iterator: I, process: F) -> Result<()>
+    where
+        I: Iterator<Item = S> + Send,
+        S: AsRef<str> + Send,
+        F: Fn(&str) -> Result<Vec<String>> + Sync,
+    {
         match self {
-            TrainerWrapper::BpeTrainer(bpe) => bpe.process_tokens(words, tokens),
-            TrainerWrapper::WordPieceTrainer(wpt) => wpt.process_tokens(words, tokens),
-            TrainerWrapper::WordLevelTrainer(wpt) => wpt.process_tokens(words, tokens),
-            TrainerWrapper::UnigramTrainer(wpt) => wpt.process_tokens(words, tokens),
+            TrainerWrapper::BpeTrainer(bpe) => bpe.feed(iterator, process),
+            TrainerWrapper::WordPieceTrainer(wpt) => wpt.feed(iterator, process),
+            TrainerWrapper::WordLevelTrainer(wpt) => wpt.feed(iterator, process),
+            TrainerWrapper::UnigramTrainer(wpt) => wpt.feed(iterator, process),
         }
     }
+
+    // fn process_tokens(&self, words: &mut HashMap<String, u32>, tokens: Vec<String>) {
+    //     match self {
+    //         TrainerWrapper::BpeTrainer(bpe) => bpe.process_tokens(words, tokens),
+    //         TrainerWrapper::WordPieceTrainer(wpt) => wpt.process_tokens(words, tokens),
+    //         TrainerWrapper::WordLevelTrainer(wpt) => wpt.process_tokens(words, tokens),
+    //         TrainerWrapper::UnigramTrainer(wpt) => wpt.process_tokens(words, tokens),
+    //     }
+    // }
 }
 
 impl_enum_from!(BpeTrainer, TrainerWrapper, BpeTrainer);
