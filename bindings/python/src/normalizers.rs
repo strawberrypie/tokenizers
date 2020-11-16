@@ -298,21 +298,29 @@ impl PyLowercase {
 pub struct PyStrip {}
 #[pymethods]
 impl PyStrip {
+    #[getter]
+    fn get_left(self_: PyRef<Self>) -> bool {
+        getter!(self_, StripNormalizer, strip_left)
+    }
+
+    #[setter]
+    fn set_left(self_: PyRef<Self>, left: bool) {
+        setter!(self_, StripNormalizer, strip_left, left)
+    }
+
+    #[getter]
+    fn get_right(self_: PyRef<Self>) -> bool {
+        getter!(self_, StripNormalizer, strip_right)
+    }
+
+    #[setter]
+    fn set_right(self_: PyRef<Self>, right: bool) {
+        setter!(self_, StripNormalizer, strip_right, right)
+    }
+
     #[new]
-    #[args(kwargs = "**")]
-    fn new(kwargs: Option<&PyDict>) -> PyResult<(Self, PyNormalizer)> {
-        let mut left = true;
-        let mut right = true;
-
-        if let Some(kwargs) = kwargs {
-            if let Some(l) = kwargs.get_item("left") {
-                left = l.extract()?;
-            }
-            if let Some(r) = kwargs.get_item("right") {
-                right = r.extract()?;
-            }
-        }
-
+    #[args(left = true, right = true)]
+    fn new(left: bool, right: bool) -> PyResult<(Self, PyNormalizer)> {
         Ok((PyStrip {}, Strip::new(left, right).into()))
     }
 }
