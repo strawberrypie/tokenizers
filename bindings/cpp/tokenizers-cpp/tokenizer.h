@@ -42,7 +42,7 @@ struct Tokenizer {
     HFT_FFI_WRAPPER(Tokenizer);
 
 public:
-    Tokenizer& with_normalizer(NormalizerWrapper&& normalizer) {
+    Tokenizer& with_normalizer(Normalizer&& normalizer) {
         ffi::set_normalizer(*inner_, *(normalizer.inner_));
         return *this;
     }

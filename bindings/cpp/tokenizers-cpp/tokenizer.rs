@@ -63,7 +63,7 @@ mod ffi {
     extern "Rust" {
         type Encoding_1;
         type ModelWrapper;
-        type NormalizerWrapper;
+        type Normalizer;
         type PreTokenizerWrapper;
         type PostProcessorWrapper;
         type DecoderWrapper;
@@ -72,7 +72,7 @@ mod ffi {
         // FIXME many of the below functions should take Box, not &.
         //  Look for clone() in the implementations.
         fn tokenizer(model: &ModelWrapper) -> Box<Tokenizer>;
-        fn set_normalizer(tokenizer: &mut Tokenizer, normalizer: &NormalizerWrapper);
+        fn set_normalizer(tokenizer: &mut Tokenizer, normalizer: &Normalizer);
         fn set_pre_tokenizer(tokenizer: &mut Tokenizer, pre_tokenizer: &PreTokenizerWrapper);
         fn set_post_processor(tokenizer: &mut Tokenizer, post_processor: &PostProcessorWrapper);
         fn set_decoder(tokenizer: &mut Tokenizer, decoder: &DecoderWrapper);
@@ -144,7 +144,7 @@ mod ffi {
     }
 }
 
-use crate::{forward_cxx_enum, wrap_option};
+use crate::{forward_cxx_enum, wrap_option, normalizers::Normalizer};
 use cxx::CxxVector;
 use derive_more::{Deref, DerefMut, From, Into};
 use ffi::*;
@@ -157,9 +157,6 @@ struct Encoding_1(tk::Encoding);
 struct ModelWrapper(tk::ModelWrapper);
 
 #[derive(Deref, DerefMut, From, Into)]
-struct NormalizerWrapper(tk::NormalizerWrapper);
-
-#[derive(Deref, DerefMut, From, Into)]
 struct PreTokenizerWrapper(tk::PreTokenizerWrapper);
 
 #[derive(Deref, DerefMut, From, Into)]
@@ -169,13 +166,21 @@ struct PostProcessorWrapper(tk::PostProcessorWrapper);
 struct DecoderWrapper(tk::DecoderWrapper);
 
 #[derive(Deref, DerefMut, From, Into)]
-struct Tokenizer(tk::Tokenizer);
+struct Tokenizer(
+    tk::TokenizerImpl<
+        tk::ModelWrapper,
+        Normalizer,
+        tk::PreTokenizerWrapper,
+        tk::PostProcessorWrapper,
+        tk::DecoderWrapper,
+    >,
+);
 
 fn tokenizer(model: &ModelWrapper) -> Box<Tokenizer> {
     Box::new(Tokenizer(tk::Tokenizer::new(model.0.clone())))
 }
 
-fn set_normalizer(tokenizer: &mut Tokenizer, normalizer: &NormalizerWrapper) {
+fn set_normalizer(tokenizer: &mut Tokenizer, normalizer: &Normalizer) {
     tokenizer.with_normalizer(normalizer.0.clone());
 }
 
