@@ -116,7 +116,6 @@ TEST_SUITE("Tokenizers") {
 inline bool run_tests(rust::Str data_dir) {
     doctest::Context context;
     data_dir_ = std::string(data_dir);
-    std::cout << "Data dir: " << data_dir_;
     return context.run() == 0;
 }
 }  // namespace tokenizers
