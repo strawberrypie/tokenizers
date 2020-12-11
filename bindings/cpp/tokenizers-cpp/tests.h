@@ -28,6 +28,93 @@ inline std::string data_file(std::string name) { return data_dir_ + name; }
         }                                                                     \
     } while (false)
 
+TEST_SUITE("Normalizers") {
+    TEST_CASE("Replace literal") {
+        // clang-format off
+        /*
+        let original = "This is a ''test''";
+        let normalized = "This is a \"test\"";
+
+        let mut n = NormalizedString::from(original);
+        Replace::new("''", "\"").unwrap().normalize(&mut n).unwrap();
+
+        assert_eq!(&n.get(), &normalized);
+        */
+        // clang-format on
+        NormalizedString n("This is a ''test''");
+        Normalizer::replace_literal("''", "\"").normalize(n);
+        CHECK(n.get_normalized() == "This is a \"test\"");
+    }
+
+    TEST_CASE("Replace regex") {
+        // clang-format off
+        /*
+        let original = "This     is   a         test";
+        let normalized = "This is a test";
+
+        let mut n = NormalizedString::from(original);
+        Replace::new(ReplacePattern::Regex(r"\s+".into()), ' ')
+            .unwrap()
+            .normalize(&mut n)
+            .unwrap();
+
+        assert_eq!(&n.get(), &normalized);
+        */
+        // clang-format on
+        NormalizedString n("This     is   a         test");
+        Normalizer::replace_regex(R"(\s+)", " ").normalize(n);
+        CHECK(n.get_normalized() == "This is a test");
+    }
+
+    TEST_CASE("NFKC") {
+        // clang-format off
+        /*
+        let original = "\u{fb01}".to_string();
+        let normalized = "fi".to_string();
+        let mut n = NormalizedString::from(original.clone());
+        NFKC.normalize(&mut n).unwrap();
+
+        assert_eq!(
+            n,
+            NormalizedString::new(original, normalized, vec![(0, 3), (0, 3)], 0)
+        );
+
+        assert_eq!(n.alignments_original(), vec![(0, 2), (0, 2), (0, 2)]);
+        */
+        // clang-format on
+        NormalizedString n("ﬁ");
+        Normalizer::nfkc().normalize(n);
+        CHECK(n.get_normalized() == "fi");
+    }
+
+    // TODO make this a test case for Normalizer::sequence
+    TEST_CASE("Sequence") {
+        // clang-format off
+        /*
+        let original: String = "Cụ thể, bạn sẽ tham gia một nhóm các giám đốc điều hành tổ chức, các nhà lãnh đạo doanh nghiệp, các học giả, chuyên gia phát triển và tình nguyện viên riêng biệt trong lĩnh vực phi lợi nhuận…".to_string();
+        let normalized = "cu the, ban se tham gia mot nhom cac giam đoc đieu hanh to chuc, cac nha lanh đao doanh nghiep, cac hoc gia, chuyen gia phat trien va tinh nguyen vien rieng biet trong linh vuc phi loi nhuan...".to_string();
+        let mut n = NormalizedString::from(original);
+        NFKD.normalize(&mut n).unwrap();
+        StripAccents.normalize(&mut n).unwrap();
+        Lowercase.normalize(&mut n).unwrap();
+        assert_eq!(&n.get(), &normalized);
+        */
+        // clang-format on
+        NormalizedString n(
+            "Cụ thể, bạn sẽ tham gia một nhóm các giám đốc điều hành tổ chức, "
+            "các nhà lãnh đạo doanh nghiệp, các học giả, chuyên gia phát triển "
+            "và tình nguyện viên riêng biệt trong lĩnh vực phi lợi nhuận…");
+        Normalizer::nfkd().normalize(n);
+        Normalizer::strip_accents().normalize(n);
+        Normalizer::lowercase().normalize(n);
+        CHECK(
+            n.get_normalized() ==
+            "cu the, ban se tham gia mot nhom cac giam đoc đieu hanh to chuc, "
+            "cac nha lanh đao doanh nghiep, cac hoc gia, chuyen gia phat trien "
+            "va tinh nguyen vien rieng biet trong linh vuc phi loi nhuan...");
+    }
+}
+
 TEST_SUITE("Pre-tokenizers") {
     TEST_CASE("BERT basic") {
         // clang-format off
@@ -83,7 +170,7 @@ TEST_SUITE("Tokenizers") {
                 .max_input_chars_per_word(100)
                 .build());
 
-        tokenizer.with_normalizer(BertNormalizerOptions().build())
+        tokenizer.with_normalizer(BertNormalizerBuilder().build())
             .with_pre_tokenizer(PreTokenizer::bert())
             .with_post_processor(
                 PostProcessor::bert("[SEP]", 101, "[CLS]", 102));
