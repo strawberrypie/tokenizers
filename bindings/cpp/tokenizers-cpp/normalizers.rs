@@ -6,6 +6,12 @@ pub mod ffi {
         True,
     }
 
+    // TODO workaround for inability to work with Vec<Normalizer> on C++ side
+    #[namespace = "huggingface::tokenizers::ffi"]
+    struct NormalizerW {
+        wrapped: &Normalizer,
+    }
+
     extern "C++" {
         include!("tokenizers-cpp/normalizers.h");
     }
@@ -46,7 +52,7 @@ pub mod ffi {
 
         fn replace_regex_normalizer(pattern: &str, content: &str) -> Result<Box<Normalizer>>;
 
-        fn sequence_normalizer(normalizers: Vec<Normalizer>) -> Box<Normalizer>;
+        fn sequence_normalizer(normalizers: Vec<NormalizerW>) -> Box<Normalizer>;
 
         fn normalize(normalizer: &Normalizer, normalized: &mut NormalizedString) -> Result<()>;
 
@@ -56,6 +62,7 @@ pub mod ffi {
 }
 
 use derive_more::{Deref, DerefMut};
+use ffi::*;
 use tk::{
     normalizers::{
         replace::ReplacePattern, BertNormalizer, Lowercase, Nmt, Precompiled, Replace, Sequence,
@@ -156,9 +163,9 @@ fn replace_regex_normalizer(pattern: &str, content: &str) -> Result<Box<Normaliz
     )?))
 }
 
-fn sequence_normalizer(normalizers: Vec<Normalizer>) -> Box<Normalizer> {
+fn sequence_normalizer(normalizers: Vec<NormalizerW>) -> Box<Normalizer> {
     make_normalizer(Sequence::new(
-        normalizers.into_iter().map(|n| n.0).collect(),
+        normalizers.into_iter().map(|n| n.wrapped.0).collect(),
     ))
 }
 

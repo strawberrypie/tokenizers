@@ -3,6 +3,7 @@
 #include "tokenizers-cpp/common.h"
 #include "tokenizers-cpp/normalizers.rs.h"
 
+#include <nonstd/span.hpp>
 #include <string>
 
 namespace huggingface {
@@ -145,13 +146,14 @@ public:
                                               ffi::to_rust_str(replacement))};
     }
 
-    // FIXME not supported yet
-    // static Normalizer sequence(nonstd::span<Normalizer> normalizers) {
-    //     rust::Vec<ffi::Normalizer> normalizers_ffi;
-    //     fill_vec(normalizers_ffi, normalizers,
-    //              [](Normalizer&& n) { return n.consume(); });
-    //     return {ffi::sequence_normalizer(normalizers_ffi)};
-    // }
+    static Normalizer sequence(std::vector<Normalizer> normalizers) {
+        rust::Vec<ffi::NormalizerW> normalizers_ffi;
+        normalizers_ffi.reserve(normalizers.size());
+        for (auto& x : normalizers) {
+            normalizers_ffi.push_back(ffi::NormalizerW{*x});
+        }
+        return {ffi::sequence_normalizer(normalizers_ffi)};
+    }
 
     /**
      * @brief Applies this normalizer to the argument.
