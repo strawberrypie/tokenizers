@@ -1,5 +1,6 @@
 #pragma once
 
+#include <nonstd/optional.hpp>
 #include <nonstd/string_view.hpp>
 #include <nonstd/span.hpp>
 #include <rust/cxx.h>
