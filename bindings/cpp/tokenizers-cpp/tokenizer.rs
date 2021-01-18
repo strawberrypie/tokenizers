@@ -22,6 +22,21 @@ mod ffi {
         StringSlice,
     }
 
+    pub enum IsNormalized {
+        IfNotSpecial,
+        False,
+        True,
+    }
+
+    #[namespace = "huggingface::tokenizers::ffi"]
+    pub struct AddedToken {
+        content: String,
+        single_word: bool,
+        lstrip: bool,
+        rstrip: bool,
+        normalized: IsNormalized,
+    }
+
     unsafe extern "C++" {
         include!("tokenizers-cpp/input_sequence.h");
         // Can probably be declared as shared when enums with data are supported
@@ -84,6 +99,7 @@ mod ffi {
             stride: usize,
         );
         fn set_no_truncation(tokenizer: &mut Tokenizer);
+        fn add_tokens(tokenizer: &mut Tokenizer, tokens: &[AddedToken], special: bool) -> usize;
 
         fn token_to_id(tokenizer: &Tokenizer, token: &str) -> OptionU32;
         fn id_to_token(tokenizer: &Tokenizer, id: u32) -> OptionString;
@@ -231,6 +247,29 @@ fn set_truncation(
 
 fn set_no_truncation(tokenizer: &mut Tokenizer) {
     tokenizer.with_truncation(None);
+}
+
+fn add_tokens(tokenizer: &mut Tokenizer, tokens: &[AddedToken], special: bool) -> usize {
+    let tokens: Vec<_> = tokens
+        .iter()
+        .map(|token| tk::AddedToken {
+            content: token.content.clone(),
+            single_word: token.single_word,
+            lstrip: token.lstrip,
+            rstrip: token.rstrip,
+            normalized: match token.normalized {
+                IsNormalized::IfNotSpecial => !special,
+                IsNormalized::False => false,
+                IsNormalized::True => true,
+                x => panic!("Illegal IsNormalized value: {}", x.repr),
+            },
+        })
+        .collect();
+    if special {
+        tokenizer.add_special_tokens(&tokens)
+    } else {
+        tokenizer.add_tokens(&tokens)
+    }
 }
 
 fn id_to_token(tokenizer: &Tokenizer, id: u32) -> OptionString {

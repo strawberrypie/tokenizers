@@ -5,6 +5,7 @@
 #include <nonstd/span.hpp>
 #include <rust/cxx.h>
 #include <initializer_list>
+#include <array>
 
 /** @file common.h Shared code for all tokenizers-cpp modules (mostly macros) */
 
@@ -183,6 +184,14 @@ auto to_optional(OptionLike e) {
 template <typename T>
 nonstd::span<const T> to_span(std::initializer_list<T> list) {
     return {list.begin(), list.size()};
+}
+
+/**
+ * @brief Converts an array to a span.
+ */
+template <typename T, size_t N>
+nonstd::span<const T> to_span(std::array<T, N> array) {
+    return {array.begin(), array.size()};
 }
 
 /**

@@ -404,6 +404,17 @@ TEST_SUITE("Tokenizers") {
             tokenizer.encode({"My", " name", " is", " John"}, true);
         check_encoding(encoding_pretokenized, expected_tokens, expected_ids);
     }
+
+    TEST_CASE("Added tokens") {
+        Tokenizer tokenizer(BpeBuilder().build());
+        REQUIRE(tokenizer.add_tokens("my", "name", "is", "john") == 4);
+        REQUIRE(tokenizer.add_special_tokens("[CLS]", "[SEP]") == 2);
+        std::unordered_map<std::string, uint32_t> expected_vocab{
+            {"my", 0},   {"name", 1},  {"is", 2},
+            {"john", 3}, {"[CLS]", 4}, {"[SEP]", 5}};
+        REQUIRE(tokenizer.get_vocab() == expected_vocab);
+        REQUIRE(tokenizer.get_vocab_size() == expected_vocab.size());
+    }
 }
 
 inline bool run_tests(rust::Str data_dir) {

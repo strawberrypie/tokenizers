@@ -96,6 +96,74 @@ struct TruncationParams {
 };
 
 /**
+ * @brief Represents a token that can be be added to a Tokenizer.
+ */
+struct AddedToken {
+    /**
+     * @brief The content of the token.
+     */
+    HFT_BUILDER_ARG(rust::String, content, "");
+    /**
+     * @brief Defines whether this token should only match single words.
+     *
+     * If `true`, this token will never match inside of a word. For example the
+     * token `ing` would match on `tokenizing` if this option is `false`, but
+     * not if it is `true`. The notion of "inside of a word" is defined by the
+     * word boundaries pattern in regular expressions (ie. the token should
+     * start and end with word boundaries).
+     */
+    HFT_BUILDER_ARG(bool, single_word, false);
+    /**
+     * @brief Defines whether this token should strip all potential whitespaces
+     * on its left side.
+     *
+     * If `true`, this token will greedily match any whitespace on its left. For
+     * example if we try to match the token `[MASK]` in the text `"I saw a
+     * [MASK]"`, we would match on `" [MASK]"` (note the space on the left).
+     */
+    HFT_BUILDER_ARG(bool, lstrip, false);
+    /**
+     * @brief Defines whether this token should strip all potential whitespaces
+     * on its right side.
+     *
+     * If `true`, this token will greedily match any whitespace on its right,
+     * similar to `lstrip` on the left.
+     */
+    HFT_BUILDER_ARG(bool, rstrip, false);
+    /**
+     * @brief Defines whether this token should match against the normalized
+     * version of the input text.
+     *
+     * For example, with the added token `"yesterday"`, and a normalizer which
+     * lowercases the text, the token could be extracted from the input `"I saw
+     * a lion Yesterday"`.
+     */
+    HFT_BUILDER_ARG(IsNormalized, normalized, IsNormalized::IfNotSpecial);
+
+    /**
+     * @brief Implicit constructor from the token content, leaving all other
+     * values as default.
+     */
+    AddedToken(nonstd::string_view content)
+        : content(ffi::to_rust_string(content)){};
+
+    // Required to construct from literal strings (not sure why the string_view
+    // constructor isn't sufficient)
+    /**
+     * @brief Implicit constructor from the token content, leaving all other
+     * values as default.
+     */
+    AddedToken(const char* content) : content(ffi::to_rust_string(content)){};
+
+    /**
+     * @brief Implicit conversion to ffi::AddedToken
+     */
+    operator ffi::AddedToken() {
+        return {content, single_word, lstrip, rstrip, normalized};
+    }
+};
+
+/**
  * @brief A Tokenizer works as a pipeline. It converts input texts to an
  * Encoding and sequences of token ids back to text.
  *
@@ -133,6 +201,14 @@ private:
             result.push_back(wrap_encoding1(ffi::box_encoding1(encoding_ffi)));
         }
         return result;
+    }
+
+    size_t add_tokens_impl(nonstd::span<const AddedToken> tokens,
+                           bool special) {
+        std::vector<ffi::AddedToken> tokens_ffi;
+        ffi::fill_vec(tokens_ffi, tokens);
+        return ffi::add_tokens(*inner_, ffi::to_rust_slice(tokens_ffi),
+                               special);
     }
 
 public:
@@ -209,6 +285,71 @@ public:
     Tokenizer& with_no_truncation() {
         ffi::set_no_truncation(*inner_);
         return *this;
+    }
+
+    /**
+     * @brief Add the given tokens to the vocabulary.
+     *
+     * The given tokens are added only if they don't already exist in the
+     * vocabulary. Each token then gets a new id.
+     *
+     * @param tokens The tokens to add.
+     * @return The number of tokens actually added.
+     */
+    size_t add_tokens(nonstd::span<const AddedToken> tokens) {
+        return add_tokens_impl(tokens, false);
+    }
+
+    /**
+     * @brief Add the given tokens to the vocabulary.
+     *
+     * The given tokens are added only if they don't already exist in the
+     * vocabulary. Each token then gets a new id.
+     *
+     * @param tokens The tokens to add.
+     * @return The number of tokens actually added.
+     */
+    template <typename... Args>
+    size_t add_tokens(Args... tokens) {
+        std::array<AddedToken, sizeof...(tokens)> tokens_holder{tokens...};
+        return add_tokens(ffi::to_span(tokens_holder));
+    }
+
+    /**
+     * @brief Add the given special tokens to the vocabulary.
+     *
+     * The given tokens are added only if they don't already exist in the
+     * vocabulary. Each token then gets a new id.
+     *
+     * These special tokens will never be processed by the model (i.e. won't
+     * be split into multiple tokens), and they can be removed from the
+     * output when decoding.
+     *
+     * @param tokens The tokens to add.
+     * @return The number of tokens actually added.
+     */
+    size_t add_special_tokens(nonstd::span<const AddedToken> tokens) {
+        return add_tokens_impl(tokens, true);
+    }
+
+    /**
+     * @brief Add the given special tokens to the vocabulary.
+     *
+     * The given tokens are added only if they don't already exist in the
+     * vocabulary. Each token then gets a new id.
+     *
+     * These special tokens will never be processed by the model (i.e. won't
+     * be split into multiple tokens), and they can be removed from the
+     * output when decoding.
+     *
+     * @param tokens The tokens to add.
+     * @return The number of tokens actually added.
+     */
+    template <typename... Args>
+    size_t add_special_tokens(AddedToken token, Args... tokens) {
+        std::array<AddedToken, sizeof...(tokens) + 1> tokens_holder{token,
+                                                                    tokens...};
+        return add_special_tokens(ffi::to_span(tokens_holder));
     }
 
     /**
@@ -300,8 +441,8 @@ public:
      * @brief Decode the given sequence of token ids back to a string.
      *
      * @param ids Token ids
-     * @param skip_special_tokens Whether the special tokens should be removed
-     * from the decoded string
+     * @param skip_special_tokens Whether the special tokens should be
+     * removed from the decoded string
      */
     HFT_RESULT(rust::String)
     decode(rust::Vec<uint32_t>&& ids, bool skip_special_tokens = true) {
@@ -313,8 +454,8 @@ public:
      * @brief Decode the given sequence of token ids back to a string.
      *
      * @param ids Token ids
-     * @param skip_special_tokens Whether the special tokens should be removed
-     * from the decoded string
+     * @param skip_special_tokens Whether the special tokens should be
+     * removed from the decoded string
      */
     HFT_RESULT(rust::String)
     decode(nonstd::span<uint32_t> ids, bool skip_special_tokens = true) {
@@ -325,11 +466,12 @@ public:
 
     // TODO generalize inner type of sequences
     /**
-     * @brief Decode the given batch of sequences of token ids back to strings.
+     * @brief Decode the given batch of sequences of token ids back to
+     * strings.
      *
      * @param sequences Token id sequences
-     * @param skip_special_tokens Whether the special tokens should be removed
-     * from the decoded strings
+     * @param skip_special_tokens Whether the special tokens should be
+     * removed from the decoded strings
      */
     HFT_RESULT(rust::Vec<rust::String>)
     decode_batch(nonstd::span<std::vector<uint32_t>> sequences,
