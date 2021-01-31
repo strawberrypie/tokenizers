@@ -1,4 +1,4 @@
-__version__ = "0.9.4"
+__version__ = "0.10.0"
 
 from typing import Tuple, Union, Tuple, List
 from enum import Enum
@@ -91,6 +91,7 @@ from .tokenizers import normalizers
 from .tokenizers import pre_tokenizers
 from .tokenizers import processors
 from .tokenizers import trainers
+
 from .implementations import (
     ByteLevelBPETokenizer,
     CharBPETokenizer,

@@ -36,32 +36,33 @@ fn is_control(c: char) -> bool {
 /// space-separated words, so they are not treated specially and handled
 /// like for all of the other languages.
 fn is_chinese_char(c: char) -> bool {
-    match c as usize {
-        0x4E00..=0x9FFF => true,
-        0x3400..=0x4DBF => true,
-        0x20000..=0x2A6DF => true,
-        0x2A700..=0x2B73F => true,
-        0x2B740..=0x2B81F => true,
-        0x2B920..=0x2CEAF => true,
-        0xF900..=0xFAFF => true,
-        0x2F800..=0x2FA1F => true,
-        _ => false,
-    }
+    matches!(
+        c as usize,
+        0x4E00..=0x9FFF |
+        0x3400..=0x4DBF |
+        0x20000..=0x2A6DF |
+        0x2A700..=0x2B73F |
+        0x2B740..=0x2B81F |
+        0x2B920..=0x2CEAF |
+        0xF900..=0xFAFF |
+        0x2F800..=0x2FA1F
+    )
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type")]
+#[non_exhaustive]
 pub struct BertNormalizer {
     /// Whether to do the bert basic cleaning:
     ///   1. Remove any control characters
     ///   2. Replace all sorts of whitespace by the classic one ` `
-    clean_text: bool,
+    pub clean_text: bool,
     /// Whether to put spaces around chinese characters so they get split
-    handle_chinese_chars: bool,
+    pub handle_chinese_chars: bool,
     /// Whether to strip accents
-    strip_accents: Option<bool>,
+    pub strip_accents: Option<bool>,
     /// Whether to lowercase the input
-    lowercase: bool,
+    pub lowercase: bool,
 }
 
 impl Default for BertNormalizer {
